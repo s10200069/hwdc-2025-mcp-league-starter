@@ -127,26 +127,65 @@ jobs:
         NEXT_TELEMETRY_DISABLED: 1
         CI: true
 
-  # Docker build test (TODO: enable when docker-compose.yml is ready)
-  # docker:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #
-  #   - name: Set up Docker Buildx
-  #     uses: docker/setup-buildx-action@v3
-  #
-  #   - name: Build Docker images
-  #     run: |
-  #       docker-compose build --no-cache
-  #
-  #   - name: Test Docker services
-  #     run: |
-  #       docker-compose up -d
-  #       sleep 30
-  #       curl -f http://localhost:8080/health || exit 1
-  #       curl -f http://localhost:3001 || exit 1
-  #       docker-compose down
+  # Docker build test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:latest
+          network=host
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Create test environment file
+      run: |
+        cp .env.docker .env
+        # Use test API key for CI
+        echo "OPENAI_API_KEY=sk-test-key-for-ci" >> .env
+
+    - name: Build Docker images
+      run: |
+        docker compose build \
+          --build-arg BUILDKIT_INLINE_CACHE=1
+
+    - name: Start Docker services
+      run: |
+        docker compose up -d
+
+    - name: Wait for services to be healthy
+      run: |
+        echo "Waiting for services to start..."
+        sleep 40
+        docker ps -a
+
+    - name: Test health endpoint
+      run: |
+        curl -f http://localhost:8080/health || exit 1
+
+    - name: Test API documentation
+      run: |
+        curl -f http://localhost:8080/docs || exit 1
+
+    - name: Check container logs
+      if: failure()
+      run: |
+        docker logs hwdc-mcp-league
+
+    - name: Cleanup
+      if: always()
+      run: |
+        docker compose down -v
 
   # Security scanning
   security:

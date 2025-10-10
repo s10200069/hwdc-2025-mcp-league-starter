@@ -8,22 +8,19 @@ import { z } from "zod";
  *
  * Note: Only NEXT_PUBLIC_ prefixed environment variables are accessible in client components.
  * Server-only variables should be handled separately in server components or API routes.
+ *
+ * API Routing Strategy:
+ * - Development: Next.js rewrites proxy /api/* to backend (configured in next.config.ts)
+ * - Production: Nginx reverse proxy handles /api/* routing
+ * - API client always uses relative paths (e.g., /api/users)
  */
 
 const ENVIRONMENTS = ["development", "production", "test", "staging"] as const;
 
 const environmentSchema = z.enum(ENVIRONMENTS);
 
-// Schema for client-side accessible configuration
-const clientConfigSchema = z.object({
-  /** API base URL for backend communication */
-  apiBaseUrl: z.string().url().default("http://localhost:8080"),
-  /** Application environment resolved from env variables */
-  environment: environmentSchema.default("development"),
-});
-
-// Schema for derived configuration values
-const derivedConfigSchema = z.object({
+// Schema for application configuration
+const appConfigSchema = z.object({
   /** Application environment resolved from env variables */
   appEnv: environmentSchema,
   /** Node environment reported by the runtime */
@@ -34,56 +31,33 @@ const derivedConfigSchema = z.object({
   isProduction: z.boolean(),
 });
 
-// Combined configuration schema
-const appConfigSchema = clientConfigSchema.merge(derivedConfigSchema);
-
 type AppConfig = z.infer<typeof appConfigSchema>;
 
 /**
  * Raw environment variables (only NEXT_PUBLIC_ prefixed for client safety)
  */
 const rawEnv = {
-  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
   appEnv: process.env.NEXT_PUBLIC_APP_ENV,
   nodeEnv: process.env.NODE_ENV,
 };
 
 /**
  * Parse and validate configuration
+ * Throws ZodError if required environment variables are missing or invalid
  */
 function createConfig(): AppConfig {
-  const fallbackEnvironment: (typeof ENVIRONMENTS)[number] = "development";
-
-  const resolvedAppEnvResult = environmentSchema.safeParse(
+  // Resolve environment with priority: NEXT_PUBLIC_APP_ENV > NODE_ENV
+  const resolvedAppEnv = environmentSchema.parse(
     rawEnv.appEnv ?? rawEnv.nodeEnv,
   );
-  const resolvedAppEnv = resolvedAppEnvResult.success
-    ? resolvedAppEnvResult.data
-    : fallbackEnvironment;
 
-  const resolvedNodeEnvResult = environmentSchema.safeParse(rawEnv.nodeEnv);
-  const resolvedNodeEnv = resolvedNodeEnvResult.success
-    ? resolvedNodeEnvResult.data
-    : fallbackEnvironment;
+  const resolvedNodeEnv = environmentSchema.parse(rawEnv.nodeEnv);
 
-  // Parse client config with defaults
-  const clientConfig = clientConfigSchema.parse({
-    apiBaseUrl: rawEnv.apiBaseUrl,
-    environment: resolvedAppEnv,
-  });
-
-  // Create derived config prioritising APP_ENV
-  const derivedConfig = {
+  return appConfigSchema.parse({
     appEnv: resolvedAppEnv,
     nodeEnv: resolvedNodeEnv,
     isDevelopment: resolvedAppEnv !== "production",
     isProduction: resolvedAppEnv === "production",
-  } as const;
-
-  // Combine and validate final config
-  return appConfigSchema.parse({
-    ...clientConfig,
-    ...derivedConfig,
   });
 }
 
