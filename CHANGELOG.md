@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v1.0.0...v1.1.0) (2025-10-10)
+
+### Features
+
+* add Docker Compose deployment with environment configuration ([#10](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/10)) ([03ac6b5](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/03ac6b591b99b8d6ee11d90f75d79fc38e84c1c9))
+
 ## 1.0.0 (2025-09-15)
 
 ### Features
