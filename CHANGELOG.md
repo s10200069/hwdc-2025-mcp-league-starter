@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v1.1.0...v1.2.0) (2025-10-11)
+
+### Features
+
+* UI/UX redesign for chat interface and components ([#13](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/13)) ([ba7ac29](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/ba7ac293ccd40e4db4c6b2c040104aba327a3062))
+
 ## [1.1.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v1.0.0...v1.1.0) (2025-10-10)
 
 ### Features

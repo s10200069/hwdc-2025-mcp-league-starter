@@ -1,6 +1,6 @@
 {
   "name": "hwdc-2025-mcp-league-starter",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "HWDC 2025「Hello World」工作坊範例：MCP 大聯盟全端樣板",
   "private": true,
   "scripts": {
