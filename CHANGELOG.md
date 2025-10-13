@@ -1,3 +1,5 @@
+## [2.1.1](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.1.0...v2.1.1) (2025-10-13)
+
 ## [2.1.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.0.0...v2.1.0) (2025-10-13)
 
 ### Features
