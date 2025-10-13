@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from agno.agent import RunContentEvent, RunErrorEvent, RunOutput
+from agno.exceptions import ModelProviderError
 
 from src.core import get_logger
+from src.core.exceptions import TooManyToolsError
 from src.integrations.mcp import (
-    get_available_mcp_servers,
     get_mcp_toolkit,
 )
 from src.models import MCPToolSelection
@@ -38,11 +39,16 @@ class ConversationUsecase:
         )
         self._attach_requested_tools(agent, payload.tools)
         messages = [message.model_dump(mode="python") for message in payload.history]
-        run_output: RunOutput = await agent.arun(
-            input=messages,
-            session_id=payload.conversation_id,
-            user_id=payload.user_id,
-        )
+        try:
+            run_output: RunOutput = await agent.arun(
+                input=messages,
+                session_id=payload.conversation_id,
+                user_id=payload.user_id,
+            )
+        except ModelProviderError as e:
+            if "array too long" in str(e):
+                raise TooManyToolsError() from e
+            raise e
 
         content = run_output.get_content_as_string() or run_output.content
         if content is None:
@@ -86,56 +92,38 @@ class ConversationUsecase:
         model_key = payload.model_key or self._agent_factory.get_active_model_key()
         model_identifier = getattr(agent.model, "id", None) or model_key
 
-        async for event in stream:
-            if isinstance(event, RunContentEvent) and event.content:
-                message_id = event.run_id or str(uuid4())
-                if isinstance(event.content, str):
-                    delta = event.content
-                else:
-                    delta = str(event.content)
-                yield ConversationStreamChunk(
-                    conversation_id=payload.conversation_id,
-                    message_id=message_id,
-                    delta=delta,
-                    model_key=model_identifier,
-                )
+        try:
+            async for event in stream:
+                if isinstance(event, RunContentEvent) and event.content:
+                    message_id = event.run_id or str(uuid4())
+                    if isinstance(event.content, str):
+                        delta = event.content
+                    else:
+                        delta = str(event.content)
+                    yield ConversationStreamChunk(
+                        conversation_id=payload.conversation_id,
+                        message_id=message_id,
+                        delta=delta,
+                        model_key=model_identifier,
+                    )
 
-            if isinstance(event, RunErrorEvent):
-                raise LLMStreamError(
-                    context={"conversation_id": payload.conversation_id}
-                )
+                if isinstance(event, RunErrorEvent):
+                    raise LLMStreamError(
+                        context={"conversation_id": payload.conversation_id}
+                    )
+        except ModelProviderError as e:
+            if "array too long" in str(e):
+                raise TooManyToolsError() from e
+            raise e
 
     def _attach_requested_tools(
         self,
         agent,
         selections: list[MCPToolSelection] | None,
     ) -> None:
-        # ⭐ When selections is None, auto-attach all available MCP servers
+        # When selections is None, do not attach any tools
         if selections is None:
-            self._logger.info(
-                "No tool selection provided, auto-attaching all available MCP servers"
-            )
-            available_servers = get_available_mcp_servers()
-
-            for server_name in available_servers:
-                toolkit = get_mcp_toolkit(server_name)
-                if toolkit is None or not toolkit.functions:
-                    self._logger.warning(
-                        "Skipping MCP server '%s' – toolkit unavailable or empty",
-                        server_name,
-                    )
-                    continue
-
-                function_names = list(toolkit.functions.keys())
-                self._logger.info(
-                    "Auto-attached MCP server '%s' with %s function(s): %s",
-                    server_name,
-                    len(function_names),
-                    ", ".join(function_names[:5])
-                    + ("..." if len(function_names) > 5 else ""),
-                )
-                agent.add_tool(toolkit)
-
+            self._logger.info("No tool selection provided, no tools will be attached")
             return
 
         # Original logic: explicit tool selections
