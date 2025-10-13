@@ -11,20 +11,30 @@ from .conversation import (
     UpsertLLMModelRequest,
 )
 from .mcp import (
-    AddPeerNodeRequest,
-    AddPeerNodeResponse,
     ListMCPServersResponse,
-    ListPeerNodesResponse,
     MCPServerInfo,
     MCPToolSelection,
-    PeerNodeInfo,
     ReloadAllMCPServersResponse,
     ReloadMCPServerResponse,
-    RemovePeerNodeResponse,
+)
+from .mcp_tools import (
+    AppConfigResponse,
+    ChatCapability,
+    EnvironmentInfo,
+    GetServerCapabilitiesResponse,
+    ListAvailableModelsResponse,
+    LLMModelInfo,
+    MCPChatResponse,
+    MCPServersCapability,
+    ResourceInfo,
+    ServerCapabilities,
+    SystemHealthResponse,
 )
 
 __all__ = [
+    # Base
     "APIBaseModel",
+    # Conversation models
     "ConversationMessage",
     "ConversationReply",
     "ConversationRequest",
@@ -32,14 +42,22 @@ __all__ = [
     "LLMModelDescriptor",
     "ListModelsResponse",
     "UpsertLLMModelRequest",
+    # MCP management models (for REST API)
     "MCPToolSelection",
     "MCPServerInfo",
     "ListMCPServersResponse",
     "ReloadMCPServerResponse",
     "ReloadAllMCPServersResponse",
-    "AddPeerNodeRequest",
-    "AddPeerNodeResponse",
-    "RemovePeerNodeResponse",
-    "PeerNodeInfo",
-    "ListPeerNodesResponse",
+    # MCP server tool response models (for FastMCP tools)
+    "AppConfigResponse",
+    "ChatCapability",
+    "EnvironmentInfo",
+    "GetServerCapabilitiesResponse",
+    "ListAvailableModelsResponse",
+    "LLMModelInfo",
+    "MCPChatResponse",
+    "MCPServersCapability",
+    "ResourceInfo",
+    "ServerCapabilities",
+    "SystemHealthResponse",
 ]

@@ -5,14 +5,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.exception_handlers import register_exception_handlers
+from src.api.mcp_server import initialize_mcp_server
 from src.api.v1.conversation_router import router as conversation_router
 from src.api.v1.mcp_router import router as mcp_router
 from src.config import settings
-from src.core import TraceMiddleware, setup_logging
+from src.core import MCPServerGuardMiddleware, TraceMiddleware, setup_logging
 from src.integrations.mcp import (
     graceful_mcp_cleanup,
     initialize_mcp_system,
-    mcp_server,
+    mcp_settings,
 )
 from src.shared.response import create_success_response
 
@@ -26,16 +27,26 @@ def get_version() -> str:
 
 setup_logging()
 
-# Create FastMCP server http_app first (before FastAPI app)
-# This allows us to access its lifespan
-mcp_http_app = mcp_server.http_app(path="/")
+# Initialize MCP server for internal use (managing other MCP servers)
+# This is always needed regardless of AS_A_MCP_SERVER setting
+mcp_server = initialize_mcp_server()
+
+# Create FastMCP server http_app only when AS_A_MCP_SERVER is enabled
+# This allows external MCP clients to connect to this server
+mcp_http_app = None
+if settings.as_a_mcp_server:
+    mcp_http_app = mcp_server.http_app(path="/")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle application startup and shutdown events."""
-    # Start FastMCP lifespan
-    async with mcp_http_app.lifespan(app):
+    # Start FastMCP lifespan for internal MCP server functionality
+    # Use the same http_app instance that will be mounted
+    mcp_app_for_lifespan = (
+        mcp_http_app if mcp_http_app is not None else mcp_server.http_app(path="/")
+    )
+    async with mcp_app_for_lifespan.lifespan(app):
         # Initialize MCP system on startup
         await initialize_mcp_system()
 
@@ -64,6 +75,13 @@ app.add_middleware(
 # Add trace middleware for request tracking and performance monitoring
 app.add_middleware(TraceMiddleware)
 
+# Add MCP server guard middleware to handle disabled MCP server endpoint
+app.add_middleware(
+    MCPServerGuardMiddleware,
+    as_a_mcp_server=settings.as_a_mcp_server,
+    enable_mcp_system=mcp_settings.enable_mcp_system,
+)
+
 # Register global exception handlers
 register_exception_handlers(app)
 
@@ -79,7 +97,10 @@ app.include_router(mcp_router, prefix="/api/v1")
 # path="/" tells FastMCP to serve at the mount root, not at /mcp/mcp/
 # Note: mcp_http_app is created at the top of this file before FastAPI app
 # initialization
-app.mount("/mcp", mcp_http_app)
+# When AS_A_MCP_SERVER=false, MCPServerGuardMiddleware will handle /mcp requests
+# and return 503 with clear error message
+if mcp_http_app is not None:
+    app.mount("/mcp", mcp_http_app)
 
 
 @app.get("/")
