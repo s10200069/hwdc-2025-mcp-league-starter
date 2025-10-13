@@ -1,3 +1,9 @@
+## [2.1.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.0.0...v2.1.0) (2025-10-13)
+
+### Features
+
+* Implement MCP peer-to-peer chat functionality ([#17](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/17)) ([c446d31](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/c446d31a5ba0d8964ae7ca7194bf640f63ee4dc6))
+
 ## [2.0.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v1.2.1...v2.0.0) (2025-10-12)
 
 ### ⚠ BREAKING CHANGES
