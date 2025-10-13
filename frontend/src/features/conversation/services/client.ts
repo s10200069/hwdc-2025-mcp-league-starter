@@ -18,10 +18,6 @@ type StreamEventHandlers = {
 const SSE_EVENT_PREFIX = "event:";
 const SSE_DATA_PREFIX = "data:";
 
-/**
- * Build URL for SSE endpoint
- * Uses relative path - routing handled by Next.js rewrites (dev) or Nginx (prod)
- */
 function buildAbsoluteUrl(path: string): string {
   if (!path.startsWith("/")) {
     return `/${path}`;
@@ -35,6 +31,7 @@ export async function sendConversationRequest(
   return apiClient.post<ConversationReply>(
     API_PATHS.CONVERSATION.BASE,
     payload,
+    { isLongRunning: true }, // Use long-running timeout
   );
 }
 
@@ -63,6 +60,7 @@ export function streamConversationRequest(
     body: JSON.stringify(payload),
     credentials: "include",
     signal: controller.signal,
+    openWhenHidden: true,
     onmessage(event) {
       handleEvent(event.data, handlers);
     },

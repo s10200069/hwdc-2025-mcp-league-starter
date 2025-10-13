@@ -4,14 +4,10 @@ import { config } from "../config";
 
 type RequestOptions = RequestInit & {
   parseJson?: boolean;
+  timeout?: number;
+  isLongRunning?: boolean;
 };
 
-/**
- * Ensures path is a valid relative URL starting with /
- * API routing is handled by:
- * - Development: Next.js rewrites (next.config.ts)
- * - Production: Nginx reverse proxy
- */
 function buildUrl(path: string): string {
   if (!path.startsWith("/")) {
     if (config.isDevelopment) {
@@ -24,57 +20,116 @@ function buildUrl(path: string): string {
 
 export async function apiRequest<T>(
   path: string,
-  { parseJson = true, ...init }: RequestOptions = {},
+  {
+    parseJson = true,
+    timeout,
+    isLongRunning = false,
+    signal,
+    ...init
+  }: RequestOptions = {},
 ): Promise<T> {
   const url = buildUrl(path);
-  const response = await fetch(url, {
-    cache: "no-store",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
 
-  if (!parseJson) {
-    return response as unknown as T;
-  }
+  const resolvedTimeout =
+    timeout ??
+    (isLongRunning ? config.apiTimeoutLongRunning : config.apiTimeout);
 
-  let payload: ApiResponse<T> | null = null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, resolvedTimeout);
+
+  const mergedSignal = signal
+    ? createMergedSignal(signal, controller.signal)
+    : controller.signal;
 
   try {
-    payload = (await response.json()) as ApiResponse<T>;
+    const response = await fetch(url, {
+      cache: "no-store",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(init?.headers ?? {}),
+      },
+      signal: mergedSignal,
+      ...init,
+    });
+
+    if (!parseJson) {
+      return response as unknown as T;
+    }
+
+    // Handle 204 No Content responses
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    let payload: ApiResponse<T> | null = null;
+
+    try {
+      payload = (await response.json()) as ApiResponse<T>;
+    } catch (error) {
+      if (config.isDevelopment) {
+        console.error("Failed to parse API response", { url, error });
+      }
+      throw new ApiError(
+        response.status,
+        "InvalidJsonResponse",
+        undefined,
+        undefined,
+      );
+    }
+
+    if (!response.ok || !payload?.success) {
+      if (payload && "success" in payload && !payload.success) {
+        throw ApiError.fromPayload(response.status, payload);
+      }
+
+      throw new ApiError(
+        response.status,
+        "UnknownApiError",
+        payload?.trace_id,
+        payload && "message" in payload ? payload.message : undefined,
+      );
+    }
+
+    return payload.data;
   } catch (error) {
-    if (config.isDevelopment) {
-      console.error("Failed to parse API response", { url, error });
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(
+        408,
+        "RequestTimeout",
+        undefined,
+        `Request timed out after ${resolvedTimeout}ms. This may occur during long-running operations.`,
+      );
     }
-    throw new ApiError(
-      response.status,
-      "InvalidJsonResponse",
-      undefined,
-      undefined,
-    );
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  if (!response.ok || !payload?.success) {
-    if (payload && "success" in payload && !payload.success) {
-      throw ApiError.fromPayload(response.status, payload);
-    }
-
-    throw new ApiError(
-      response.status,
-      "UnknownApiError",
-      payload?.trace_id,
-      payload && "message" in payload ? payload.message : undefined,
-    );
-  }
-
-  return payload.data;
 }
 
-// Convenience methods for better developer experience
+function createMergedSignal(
+  callerSignal: AbortSignal,
+  timeoutSignal: AbortSignal,
+): AbortSignal {
+  if (callerSignal.aborted) {
+    return callerSignal;
+  }
+
+  const mergedController = new AbortController();
+
+  const abortHandler = () => {
+    mergedController.abort();
+  };
+
+  callerSignal.addEventListener("abort", abortHandler, { once: true });
+  timeoutSignal.addEventListener("abort", abortHandler, { once: true });
+
+  return mergedController.signal;
+}
+
 export const apiClient = {
   get: <T>(
     path: string,

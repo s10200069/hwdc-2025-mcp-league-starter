@@ -14,6 +14,11 @@ from agno.tools.mcp import MCPTools
 from src.core.logging import get_logger
 from src.models import ReloadAllMCPServersResponse, ReloadMCPServerResponse
 from src.shared.exceptions import (
+    MCPAuthenticationError,
+    MCPConnectionError,
+    MCPConnectionTimeoutError,
+    MCPHTTPError,
+    MCPInvalidConfigError,
     MCPNoServersAvailableError,
     MCPServerDisabledError,
     MCPServerNotFoundError,
@@ -188,13 +193,94 @@ class MCPManager:
     def _handle_initialization_error(
         self, config: MCPServerParams, error: Exception
     ) -> None:
-        logger.error(
-            "Failed to initialise MCP server '%s': %s",
-            config.name,
-            error,
-        )
+        """
+        Handle and log initialization errors with user-friendly messages.
+
+        Provides specific guidance based on error type:
+        - Authentication errors: Check token configuration
+        - Connection errors: Check URL and network
+        - Timeout errors: Increase timeout or check server availability
+        - HTTP errors: Show status code and response
+        - Config errors: Show configuration issues
+        """
+        # Build error message with specific guidance
+        error_type = type(error).__name__
+        error_msg = str(error)
+
+        if isinstance(error, MCPAuthenticationError):
+            context = getattr(error, "context", {})
+            logger.error(
+                "❌ Authentication failed for MCP server '%s'\n"
+                "   URL: %s\n"
+                "   Status: HTTP %s\n"
+                "   Reason: %s\n"
+                "   💡 Action: Verify authentication token in config "
+                "matches server's expected token",
+                config.name,
+                config.url,
+                context.get("status_code", "unknown"),
+                context.get("reason", "Invalid or missing token"),
+            )
+        elif isinstance(error, MCPHTTPError):
+            context = getattr(error, "context", {})
+            logger.error(
+                "❌ HTTP error from MCP server '%s'\n"
+                "   URL: %s\n"
+                "   Status: HTTP %s\n"
+                "   Response: %s\n"
+                "   💡 Action: Check server logs and verify endpoint is correct",
+                config.name,
+                config.url,
+                context.get("status_code", "unknown"),
+                context.get("reason", "Unknown error"),
+            )
+        elif isinstance(error, MCPConnectionError):
+            context = getattr(error, "context", {})
+            logger.error(
+                "❌ Cannot connect to MCP server '%s'\n"
+                "   URL: %s\n"
+                "   Reason: %s\n"
+                "   💡 Action: Verify URL is correct and server is reachable "
+                "(check network/DNS)",
+                config.name,
+                config.url,
+                context.get("reason", "Connection failed"),
+            )
+        elif isinstance(error, MCPConnectionTimeoutError):
+            context = getattr(error, "context", {})
+            logger.error(
+                "❌ Connection timeout for MCP server '%s'\n"
+                "   URL: %s\n"
+                "   Timeout: %ss\n"
+                "   💡 Action: Increase timeout_seconds in config or "
+                "check if server is responding",
+                config.name,
+                config.url,
+                context.get("timeout_seconds", "unknown"),
+            )
+        elif isinstance(error, MCPInvalidConfigError):
+            context = getattr(error, "context", {})
+            logger.error(
+                "❌ Invalid configuration for MCP server '%s'\n"
+                "   Reason: %s\n"
+                "   💡 Action: Review configuration in mcp_servers.json",
+                config.name,
+                context.get("reason", "Configuration error"),
+            )
+        else:
+            # Generic error handling
+            logger.error(
+                "❌ Failed to initialise MCP server '%s'\n"
+                "   Error type: %s\n"
+                "   Message: %s",
+                config.name,
+                error_type,
+                error_msg,
+            )
+
+        # Always log full traceback at debug level for troubleshooting
         logger.debug(
-            "Traceback for MCP server '%s':\n%s",
+            "Detailed traceback for MCP server '%s':\n%s",
             config.name,
             "".join(
                 traceback.format_exception(
@@ -538,6 +624,124 @@ class MCPManager:
 
         logger.info("MCP manager shutdown complete")
 
+    async def add_peer_node(
+        self, peer_name: str, peer_url: str, *, auth_token: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Dynamically add a peer MCP node (another instance of this application).
+
+        Args:
+            peer_name: Unique name for the peer node
+            peer_url: HTTP URL of the peer's MCP endpoint (e.g., http://peer:8000/mcp)
+            auth_token: Optional bearer token for authentication
+
+        Returns:
+            Dict with success status and function count
+
+        Raises:
+            ValueError: If peer_name already exists or URL is invalid
+        """
+        from .server_params import AuthType, HTTPAuthConfig, TransportType
+
+        logger.info("Adding peer MCP node '%s' at %s", peer_name, peer_url)
+
+        async with self._lock:
+            # Check if peer already exists
+            if peer_name in self._servers:
+                raise ValueError(f"Peer node '{peer_name}' already connected")
+
+            # Build auth config if token provided
+            auth_config = None
+            if auth_token:
+                auth_config = HTTPAuthConfig(
+                    type=AuthType.BEARER, token=auth_token, header_name="Authorization"
+                )
+
+            # Create peer configuration
+            peer_config = MCPServerParams(
+                name=peer_name,
+                transport=TransportType.HTTP,
+                url=peer_url,
+                auth=auth_config,
+                enabled=True,
+                description=f"Peer node at {peer_url}",
+                timeout_seconds=30,
+            )
+
+            # Validate configuration
+            if not self._params_manager.validate_config(peer_config):
+                raise ValueError(f"Invalid peer configuration for '{peer_name}'")
+
+            # Initialize the peer connection
+            await self._initialise_http_server(peer_config)
+
+            # Add to configs for persistence across reloads
+            self._configs.append(peer_config)
+
+            function_count = self._get_server_function_count(peer_name)
+            logger.info(
+                "Peer node '%s' added successfully with %s functions",
+                peer_name,
+                function_count,
+            )
+
+            return {
+                "success": True,
+                "peer_name": peer_name,
+                "peer_url": peer_url,
+                "function_count": function_count,
+            }
+
+    async def remove_peer_node(self, peer_name: str) -> dict[str, Any]:
+        """
+        Remove a peer MCP node.
+
+        Args:
+            peer_name: Name of the peer to remove
+
+        Returns:
+            Dict with success status
+
+        Raises:
+            ValueError: If peer_name doesn't exist
+        """
+        logger.info("Removing peer MCP node '%s'", peer_name)
+
+        async with self._lock:
+            if peer_name not in self._servers:
+                raise ValueError(f"Peer node '{peer_name}' not found")
+
+            # Close the connection
+            await self._close_server(peer_name)
+
+            # Remove from configs
+            self._configs = [cfg for cfg in self._configs if cfg.name != peer_name]
+
+            logger.info("Peer node '%s' removed successfully", peer_name)
+
+            return {"success": True, "peer_name": peer_name}
+
+    def list_peer_nodes(self) -> list[dict[str, Any]]:
+        """
+        List all connected peer MCP nodes (HTTP transport servers).
+
+        Returns:
+            List of peer node information
+        """
+        peers = []
+        for config in self._configs:
+            if config.is_http_transport() and config.name in self._servers:
+                peers.append(
+                    {
+                        "name": config.name,
+                        "url": config.url,
+                        "description": config.description,
+                        "connected": True,
+                        "function_count": self._get_server_function_count(config.name),
+                    }
+                )
+        return peers
+
 
 async def initialize_mcp_system() -> bool:
     return await MCPManager().initialize_system()
@@ -583,3 +787,20 @@ async def reload_mcp_server(server_name: str) -> ReloadMCPServerResponse:
 async def reload_all_mcp_servers() -> ReloadAllMCPServersResponse:
     """Reload all enabled MCP servers."""
     return await MCPManager().reload_all_servers()
+
+
+async def add_peer_node(
+    peer_name: str, peer_url: str, *, auth_token: str | None = None
+) -> dict[str, Any]:
+    """Add a peer MCP node for peer-to-peer communication."""
+    return await MCPManager().add_peer_node(peer_name, peer_url, auth_token=auth_token)
+
+
+async def remove_peer_node(peer_name: str) -> dict[str, Any]:
+    """Remove a peer MCP node."""
+    return await MCPManager().remove_peer_node(peer_name)
+
+
+def list_peer_nodes() -> list[dict[str, Any]]:
+    """List all connected peer MCP nodes."""
+    return MCPManager().list_peer_nodes()
