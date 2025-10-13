@@ -1,3 +1,11 @@
+## [2.2.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.1.1...v2.2.0) (2025-10-13)
+
+### Features
+
+* add workshop guide and enhance MCP peer-to-peer functionality ([#20](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/20)) ([9622882](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/9622882de097e86751f1cd0eb2f115dfaa86547f))
+* replace bash scripts with cross-platform Node.js scripts ([#21](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/21)) ([870ac5f](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/870ac5facbf8584440323aff8f1bb676e148f18c))
+* tools and prompt ([#19](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/issues/19)) ([25dec99](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/commit/25dec993ac9c05a5c420973be0d9732e6184e4e8))
+
 ## [2.1.1](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.1.0...v2.1.1) (2025-10-13)
 
 ## [2.1.0](https://github.com/Mapleeeeeeeeeee/hwdc-2025-mcp-league-starter/compare/v2.0.0...v2.1.0) (2025-10-13)
