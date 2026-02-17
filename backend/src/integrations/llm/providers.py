@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from agno.models.google import Gemini
 from agno.models.ollama import Ollama
 from agno.models.openai import OpenAIChat
 
@@ -41,6 +42,24 @@ def _build_openai_model(
     return OpenAIChat(**params)
 
 
+def _build_google_model(
+    config: LLMModelConfig,
+    overrides: Mapping[str, Any],
+) -> Gemini:
+    secret_name = config.api_key_env or "GOOGLE_API_KEY"
+    api_key = settings.get_secret(secret_name)
+    if not api_key:
+        raise LLMProviderNotConfiguredError(
+            provider="google",
+            secret_name=secret_name,
+        )
+    
+    # gemini-2.0-flash is the only one verified to work in Agno without 404
+    model_id = "gemini-2.0-flash"
+    
+    return Gemini(id=model_id, api_key=api_key)
+
+
 def _build_ollama_model(
     config: LLMModelConfig,
     overrides: Mapping[str, Any],
@@ -62,6 +81,7 @@ def _build_ollama_model(
 
 _PROVIDER_FACTORIES: dict[str, ProviderFactory] = {
     "openai": _build_openai_model,
+    "google": _build_google_model,
     "ollama": _build_ollama_model,
 }
 

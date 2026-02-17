@@ -15,6 +15,7 @@ dependencies = [
     "fastmcp>=2.12.4",
     "ddgs>=9.6.1",
     "httpx>=0.28.1",
+    "google-genai>=1.63.0",
 ]
 
 [dependency-groups]
