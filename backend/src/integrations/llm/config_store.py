@@ -25,6 +25,14 @@ _DEFAULT_MODEL_CONFIGS: tuple[LLMModelConfig, ...] = (
         metadata={"display_name": "OpenAI GPT-5 mini"},
     ),
     LLMModelConfig(
+        key="google:gemini-2.0-flash",
+        provider="google",
+        model_id="gemini-2.0-flash",
+        api_key_env="GOOGLE_API_KEY",
+        supports_streaming=True,
+        metadata={"display_name": "Google Gemini 2.0 Flash"},
+    ),
+    LLMModelConfig(
         key="ollama:llama3.1",
         provider="ollama",
         model_id="llama3.1",
