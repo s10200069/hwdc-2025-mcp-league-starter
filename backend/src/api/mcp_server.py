@@ -88,10 +88,14 @@ def _register_mcp_tools(server: FastMCP):
     @server.tool
     async def chat(
         message: str,
-        model_key: str | None = None,
-        conversation_id: str | None = None,
+        model_key: str = "",
+        conversation_id: str = "",
         user_id: str = "peer-caller",
-        tools: list[dict] | None = None,
+        tools: list[dict] = [],
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
     ) -> MCPChatResponse:
         """呼叫此功能前，請先依序查詢
         - list_available_models
@@ -106,11 +110,15 @@ def _register_mcp_tools(server: FastMCP):
 
         Args:
             message (str): 用戶的訊息內容，必填。
-            model_key (str | None): 可選的 LLM 模型鍵，如果不指定則使用預設模型。
-            conversation_id (str | None): 可選的對話 ID，用於維持上下文和多輪對話。
+            model_key (str): 可選的 LLM 模型鍵，如果不指定則使用預設模型。
+            conversation_id (str): 可選的對話 ID，用於維持上下文和多輪對話。
             user_id (str): 用戶 ID，預設為 "peer-caller"。
-            tools (list[dict] | None): 可選的工具選擇列表，
+            tools (list[dict]): 可選的工具選擇列表，
                 每個 dict 包含 'server' 和可選的 'functions'。
+            sessionId (str): n8n 會話 ID。
+            action (str): n8n 動作。
+            chatInput (str): n8n 對話輸入。
+            toolCallId (str): n8n 工具呼叫 ID。
 
         Returns:
             MCPChatResponse: 包含對話回應的 Pydantic 模型，包括 AI 的回覆、對話 ID 等。
@@ -118,6 +126,10 @@ def _register_mcp_tools(server: FastMCP):
         logger.info("MCP tool 'chat' called by user=%s", user_id)
         agent_factory = get_agent_factory()
         chat_usecase = MCPChatUsecase(agent_factory=agent_factory)
+
+        # Handle empty strings as None for the use case
+        actual_model_key = model_key if model_key else None
+        actual_conversation_id = conversation_id if conversation_id else None
 
         # Convert tools dict to MCPToolSelection list
         tool_selections = None
@@ -130,11 +142,16 @@ def _register_mcp_tools(server: FastMCP):
                 tool_selections.append(selection)
 
         return await chat_usecase.chat(
-            message, model_key, conversation_id, user_id, tool_selections
+            message, actual_model_key, actual_conversation_id, user_id, tool_selections
         )
 
     @server.tool
-    def list_mcp_servers() -> dict:
+    def list_mcp_servers(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> dict:
         """列出所有配置的 MCP 伺服器及其狀態。
 
         提供伺服器清單，包括是否啟用、連接狀態等。有助於監控和調試。
@@ -152,7 +169,13 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.list_servers().model_dump(by_alias=True)
 
     @server.tool
-    async def reload_mcp_server(server_name: str) -> dict:
+    async def reload_mcp_server(
+        server_name: str,
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> dict:
         """重新載入指定的 MCP 伺服器。
 
         如果伺服器出錯或配置改變，可以手動重新載入，而不影響其他伺服器。
@@ -173,7 +196,12 @@ def _register_mcp_tools(server: FastMCP):
         return result.model_dump(by_alias=True)
 
     @server.tool
-    async def reload_all_mcp_servers() -> dict:
+    async def reload_all_mcp_servers(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> dict:
         """重新載入所有啟用的 MCP 伺服器。
 
         批量操作，適合全系統重置或配置更新後的同步。
@@ -191,7 +219,13 @@ def _register_mcp_tools(server: FastMCP):
         return result.model_dump(by_alias=True)
 
     @server.tool
-    def get_mcp_server_functions(server_name: str) -> list[str]:
+    def get_mcp_server_functions(
+        server_name: str,
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> list[str]:
         """獲取指定 MCP 伺服器的可用函數列表。
 
         列出某個伺服器暴露的工具或函數，讓客戶端知道可以調用什麼。
@@ -213,7 +247,12 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.get_server_functions(server_name)
 
     @server.tool
-    def get_available_mcp_servers() -> list[str]:
+    def get_available_mcp_servers(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> list[str]:
         """獲取所有已連接 MCP 伺服器的名稱列表。
 
         簡單的清單，提供活躍伺服器的概覽。只返回名稱。
@@ -230,7 +269,12 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.get_available_servers()
 
     @server.tool
-    def list_available_models() -> ListAvailableModelsResponse:
+    def list_available_models(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> ListAvailableModelsResponse:
         """列出所有配置的 LLM 模型。
 
         提供模型清單，讓客戶端選擇適合的模型進行對話或任務。
@@ -247,7 +291,12 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.list_available_models()
 
     @server.tool
-    def get_server_capabilities() -> GetServerCapabilitiesResponse:
+    def get_server_capabilities(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> GetServerCapabilitiesResponse:
         """獲取這個容器的綜合能力資訊。
 
         提供伺服器的元資料，讓客戶端了解整體功能。
@@ -264,7 +313,12 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.get_server_capabilities()
 
     @server.tool
-    def get_app_config() -> AppConfigResponse:
+    def get_app_config(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> AppConfigResponse:
         """獲取應用程式配置資訊。
 
         暴露配置，讓外部工具或管理員查看設定。注意可能包含敏感資訊。
@@ -281,7 +335,12 @@ def _register_mcp_tools(server: FastMCP):
         return management_usecase.get_app_config()
 
     @server.tool
-    def get_system_health() -> SystemHealthResponse:
+    def get_system_health(
+        sessionId: str = "",
+        action: str = "",
+        chatInput: str = "",
+        toolCallId: str = "",
+    ) -> SystemHealthResponse:
         """獲取系統健康狀態。
 
         監控系統健康，提供健康檢查端點。
